@@ -73,12 +73,6 @@ dashboard_import:
 #############################
 #  TELEMETRY & DIAGNOSTICS
 #############################
-
-binary_sensor:
-  - platform: status
-    name: "Device Status"
-    entity_category: diagnostic
-
 sensor:
   - platform: uptime
     name: "Uptime (seconds)"
@@ -236,6 +230,9 @@ cover:
 
 # Button 1 => Toggles Ladder1 Up or Stop
 binary_sensor:
+  - platform: status
+    name: "Device Status"
+    entity_category: diagnostic
   - platform: gpio
     name: "Button1 Ladder1 Up/Stop"
     pin:
