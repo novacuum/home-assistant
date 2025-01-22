@@ -20,6 +20,7 @@ substitutions:
   sntp_server_2: "1.pool.ntp.org"
   sntp_server_3: "2.pool.ntp.org"
 
+
 esphome:
   name: "${name}"
   friendly_name: "${friendly_name}"
@@ -59,9 +60,11 @@ network:
   enable_ipv6: ${ipv6_enable}
 
 wifi:
-  ap:
-    ssid: "${friendly_name} Fallback"
+  # This spawns an AP with the device name and mac address with no password.
+  ap: {}
+  # Allow rapid re-connection to previously connect WiFi SSID, skipping scan of all SSID
   fast_connect: "${wifi_fast_connect}"
+  # Define dns domain / suffix to add to hostname
   domain: "${dns_domain}"
 
 captive_portal:
@@ -167,7 +170,7 @@ switch:
     name: "Relay1 (Ladder1 Up)"
     pin: GPIO13
     restore_mode: ALWAYS_OFF
-    interlock: [relay2]
+    interlock: [relay3]
     interlock_wait_time: 300ms
 
   - platform: gpio
@@ -175,7 +178,7 @@ switch:
     name: "Relay2 (Ladder1 Down)"
     pin: GPIO4
     restore_mode: ALWAYS_OFF
-    interlock: [relay1]
+    interlock: [relay4]
     interlock_wait_time: 300ms
 
   # Ladder2: Up / Down (interlocked)
@@ -184,7 +187,7 @@ switch:
     name: "Relay3 (Ladder2 Up)"
     pin: GPIO15
     restore_mode: ALWAYS_OFF
-    interlock: [relay4]
+    interlock: [relay1]
     interlock_wait_time: 300ms
 
   - platform: gpio
@@ -192,37 +195,54 @@ switch:
     name: "Relay4 (Ladder2 Down)"
     pin: GPIO14
     restore_mode: ALWAYS_OFF
-    interlock: [relay3]
+    interlock: [relay2]
     interlock_wait_time: 300ms
 
 #############################
-#  COVER ENTITIES
+#  TIME-BASED COVER ENTITIES
 #############################
-
 cover:
-  - platform: template
+  - platform: time_based
     name: "Ladder1"
     id: cover_ladder1
     device_class: shutter
+    
     open_action:
-      - switch.turn_on: relay1   # Turn on Up
+      - switch.turn_on: relay1
+    open_duration: 3s  # <-- Adjust to actual open time
+    
     close_action:
-      - switch.turn_on: relay2  # Turn on Down
+      - switch.turn_on: relay3
+    close_duration: 3s # <-- Adjust to actual close time
+    
     stop_action:
       - switch.turn_off: relay1
-      - switch.turn_off: relay2
+      - switch.turn_off: relay3
 
-  - platform: template
+  - platform: time_based
     name: "Ladder2"
     id: cover_ladder2
     device_class: shutter
+    
     open_action:
-      - switch.turn_on: relay3
+      - switch.turn_on: relay2
+    open_duration: 3s  # <-- Adjust to actual open time
+    
     close_action:
       - switch.turn_on: relay4
+    close_duration: 3s # <-- Adjust to actual close time
+    
     stop_action:
-      - switch.turn_off: relay3
+      - switch.turn_off: relay2
       - switch.turn_off: relay4
+
+light:
+  - platform: status_led
+    name: "Status LED"
+    disabled_by_default: true
+    pin:
+      number: GPIO0
+      inverted: true
 
 #############################
 #  BUTTON INPUTS (TOGGLE UP/STOP or DOWN/STOP)
@@ -243,19 +263,14 @@ binary_sensor:
       then:
         - if:
             condition:
-              or:
-                - switch.is_on: relay1
-                - switch.is_on: relay2
+              - switch.is_on: relay1
             then:
-              # If it's already moving up or down, STOP
               - cover.stop: cover_ladder1
             else:
-              # Otherwise, start moving UP
               - cover.open: cover_ladder1
 
-  # Button 2 => Toggles Ladder1 Down or Stop
   - platform: gpio
-    name: "Button2 Ladder1 Down/Stop"
+    name: "Button2 Ladder2 Up/Stop"
     pin:
       number: GPIO3
       inverted: true
@@ -263,17 +278,14 @@ binary_sensor:
       then:
         - if:
             condition:
-              or:
-                - switch.is_on: relay1
-                - switch.is_on: relay2
+              - switch.is_on: relay2
             then:
-              - cover.stop: cover_ladder1
+              - cover.stop: cover_ladder2
             else:
-              - cover.close: cover_ladder1
+              - cover.open: cover_ladder2
 
-  # Button 3 => Toggles Ladder2 Up or Stop
   - platform: gpio
-    name: "Button3 Ladder2 Up/Stop"
+    name: "Button3 Ladder1 Down/Stop"
     pin:
       number: GPIO5
       inverted: true
@@ -281,15 +293,12 @@ binary_sensor:
       then:
         - if:
             condition:
-              or:
-                - switch.is_on: relay3
-                - switch.is_on: relay4
+              - switch.is_on: relay3
             then:
-              - cover.stop: cover_ladder2
+              - cover.stop: cover_ladder1
             else:
-              - cover.open: cover_ladder2
+              - cover.close: cover_ladder1
 
-  # Button 4 => Toggles Ladder2 Down or Stop
   - platform: gpio
     name: "Button4 Ladder2 Down/Stop"
     pin:
@@ -299,9 +308,7 @@ binary_sensor:
       then:
         - if:
             condition:
-              or:
-                - switch.is_on: relay3
-                - switch.is_on: relay4
+              - switch.is_on: relay4
             then:
               - cover.stop: cover_ladder2
             else:
