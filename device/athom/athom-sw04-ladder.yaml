@@ -1,0 +1,327 @@
+substitutions:
+  #### Basic Naming
+  name: "athom-sw04-ladders"
+  friendly_name: "SW04 Ladder Motors"
+  device_description: "Athom SW04 controlling 2 ladder motors with toggle-style buttons"
+  room: ""   # e.g. "Living Room" if you want an assigned Area in HA
+  project_name: "Athom Technology.4Gang Switch"
+  project_version: "v2.0.1"
+
+  #### Network + Logging
+  dns_domain: ".local"
+  ipv6_enable: "false"
+  wifi_fast_connect: "false"
+  log_level: "DEBUG"
+
+  #### Time + NTP
+  timezone: ""  # e.g. "Europe/Berlin" or "America/New_York"
+  sntp_update_interval: 6h
+  sntp_server_1: "0.pool.ntp.org"
+  sntp_server_2: "1.pool.ntp.org"
+  sntp_server_3: "2.pool.ntp.org"
+
+esphome:
+  name: "${name}"
+  friendly_name: "${friendly_name}"
+  comment: "${device_description}"
+  area: "${room}"
+  name_add_mac_suffix: true
+  min_version: 2024.6.0
+
+  project:
+    name: "${project_name}"
+    version: "${project_version}"
+
+esp8266:
+  board: esp8285
+  # If you want ESPHome to remember relay states across reboots, enable restore_from_flash:
+  restore_from_flash: true
+
+preferences:
+  flash_write_interval: 1min
+
+ota:
+  - platform: esphome
+
+api:
+
+logger:
+  level: ${log_level}
+  baud_rate: 115200
+
+mdns:
+  disabled: false
+
+web_server:
+  port: 80
+
+network:
+  enable_ipv6: ${ipv6_enable}
+
+wifi:
+  ap:
+    ssid: "${friendly_name} Fallback"
+  fast_connect: "${wifi_fast_connect}"
+  domain: "${dns_domain}"
+
+captive_portal:
+
+dashboard_import:
+  # If you rely on Athom’s GitHub for additional configs:
+  package_import_url: github://athom-tech/athom-configs/athom-sw04.yaml
+
+#############################
+#  TELEMETRY & DIAGNOSTICS
+#############################
+
+binary_sensor:
+  - platform: status
+    name: "Device Status"
+    entity_category: diagnostic
+
+sensor:
+  - platform: uptime
+    name: "Uptime (seconds)"
+    id: uptime_sensor
+    entity_category: diagnostic
+    internal: true
+
+  - platform: wifi_signal
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: diagnostic
+
+  - platform: copy
+    source_id: wifi_signal_db
+    name: "WiFi Signal %"
+    filters:
+      - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
+    unit_of_measurement: "%"
+    entity_category: diagnostic
+    device_class: ""
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: "IP Address"
+      entity_category: diagnostic
+    ssid:
+      name: "Connected SSID"
+      entity_category: diagnostic
+    mac_address:
+      name: "MAC Address"
+      entity_category: diagnostic
+
+  - platform: template
+    name: "Last Restart"
+    id: device_last_restart
+    icon: mdi:clock
+    entity_category: diagnostic
+
+  - platform: template
+    name: "Uptime (formatted)"
+    entity_category: diagnostic
+    lambda: |-
+      int seconds = int(id(uptime_sensor).state);
+      int days = seconds / (24 * 3600);
+      seconds = seconds % (24 * 3600);
+      int hours = seconds / 3600;
+      seconds = seconds % 3600;
+      int minutes = seconds / 60;
+      seconds = seconds % 60;
+      if (days > 3650) {
+        return {"Starting up"};
+      } else if (days) {
+        return {(String(days) + "d " + String(hours) + "h " + String(minutes) + "m " + String(seconds) + "s").c_str()};
+      } else if (hours) {
+        return {(String(hours) + "h " + String(minutes) + "m " + String(seconds) + "s").c_str()};
+      } else if (minutes) {
+        return {(String(minutes) + "m " + String(seconds) + "s").c_str()};
+      } else {
+        return {(String(seconds) + "s").c_str()};
+      }
+    icon: mdi:clock-start
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "${timezone}"
+    update_interval: ${sntp_update_interval}
+    servers:
+      - "${sntp_server_1}"
+      - "${sntp_server_2}"
+      - "${sntp_server_3}"
+    on_time_sync:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(device_last_restart).state == "";'
+            then:
+              - text_sensor.template.publish:
+                  id: device_last_restart
+                  state: !lambda 'return id(sntp_time).now().strftime("%a %d %b %Y - %I:%M:%S %p");'
+
+#############################
+#  RELAY OUTPUTS
+#############################
+
+switch:
+  # Ladder1: Up / Down (interlocked)
+  - platform: gpio
+    id: relay1
+    name: "Relay1 (Ladder1 Up)"
+    pin: GPIO13
+    restore_mode: ALWAYS_OFF
+    interlock: [relay2]
+    interlock_wait_time: 300ms
+
+  - platform: gpio
+    id: relay2
+    name: "Relay2 (Ladder1 Down)"
+    pin: GPIO4
+    restore_mode: ALWAYS_OFF
+    interlock: [relay1]
+    interlock_wait_time: 300ms
+
+  # Ladder2: Up / Down (interlocked)
+  - platform: gpio
+    id: relay3
+    name: "Relay3 (Ladder2 Up)"
+    pin: GPIO15
+    restore_mode: ALWAYS_OFF
+    interlock: [relay4]
+    interlock_wait_time: 300ms
+
+  - platform: gpio
+    id: relay4
+    name: "Relay4 (Ladder2 Down)"
+    pin: GPIO14
+    restore_mode: ALWAYS_OFF
+    interlock: [relay3]
+    interlock_wait_time: 300ms
+
+#############################
+#  COVER ENTITIES
+#############################
+
+cover:
+  - platform: template
+    name: "Ladder1"
+    id: cover_ladder1
+    device_class: shutter
+    open_action:
+      - switch.turn_on: relay1   # Turn on Up
+    close_action:
+      - switch.turn_on: relay2  # Turn on Down
+    stop_action:
+      - switch.turn_off: relay1
+      - switch.turn_off: relay2
+
+  - platform: template
+    name: "Ladder2"
+    id: cover_ladder2
+    device_class: shutter
+    open_action:
+      - switch.turn_on: relay3
+    close_action:
+      - switch.turn_on: relay4
+    stop_action:
+      - switch.turn_off: relay3
+      - switch.turn_off: relay4
+
+#############################
+#  BUTTON INPUTS (TOGGLE UP/STOP or DOWN/STOP)
+#############################
+
+# Button 1 => Toggles Ladder1 Up or Stop
+binary_sensor:
+  - platform: gpio
+    name: "Button1 Ladder1 Up/Stop"
+    pin:
+      number: GPIO12
+      inverted: true
+    on_click:
+      then:
+        - if:
+            condition:
+              or:
+                - cover.is_opening: cover_ladder1
+                - cover.is_closing: cover_ladder1
+            then:
+              # If it's already moving up or down, STOP
+              - cover.stop: cover_ladder1
+            else:
+              # Otherwise, start moving UP
+              - cover.open: cover_ladder1
+
+  # Button 2 => Toggles Ladder1 Down or Stop
+  - platform: gpio
+    name: "Button2 Ladder1 Down/Stop"
+    pin:
+      number: GPIO3
+      inverted: true
+    on_click:
+      then:
+        - if:
+            condition:
+              or:
+                - cover.is_opening: cover_ladder1
+                - cover.is_closing: cover_ladder1
+            then:
+              - cover.stop: cover_ladder1
+            else:
+              - cover.close: cover_ladder1
+
+  # Button 3 => Toggles Ladder2 Up or Stop
+  - platform: gpio
+    name: "Button3 Ladder2 Up/Stop"
+    pin:
+      number: GPIO5
+      inverted: true
+    on_click:
+      then:
+        - if:
+            condition:
+              or:
+                - cover.is_opening: cover_ladder2
+                - cover.is_closing: cover_ladder2
+            then:
+              - cover.stop: cover_ladder2
+            else:
+              - cover.open: cover_ladder2
+
+  # Button 4 => Toggles Ladder2 Down or Stop
+  - platform: gpio
+    name: "Button4 Ladder2 Down/Stop"
+    pin:
+      number: GPIO16
+      inverted: true
+    on_click:
+      then:
+        - if:
+            condition:
+              or:
+                - cover.is_opening: cover_ladder2
+                - cover.is_closing: cover_ladder2
+            then:
+              - cover.stop: cover_ladder2
+            else:
+              - cover.close: cover_ladder2
+
+#############################
+#  OPTIONAL SERVICE BUTTONS
+#############################
+
+button:
+  - platform: restart
+    name: "Device Restart"
+    entity_category: config
+
+  - platform: factory_reset
+    name: "Factory Reset"
+    entity_category: config
+
+  - platform: safe_mode
+    name: "Enter Safe Mode"
+    entity_category: config
