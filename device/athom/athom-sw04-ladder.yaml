@@ -233,6 +233,7 @@ binary_sensor:
   - platform: status
     name: "Device Status"
     entity_category: diagnostic
+
   - platform: gpio
     name: "Button1 Ladder1 Up/Stop"
     pin:
@@ -243,8 +244,8 @@ binary_sensor:
         - if:
             condition:
               or:
-                - cover.is_opening: cover_ladder1
-                - cover.is_closing: cover_ladder1
+                - switch.is_on: relay1
+                - switch.is_on: relay2
             then:
               # If it's already moving up or down, STOP
               - cover.stop: cover_ladder1
@@ -263,8 +264,8 @@ binary_sensor:
         - if:
             condition:
               or:
-                - cover.is_opening: cover_ladder1
-                - cover.is_closing: cover_ladder1
+                - switch.is_on: relay1
+                - switch.is_on: relay2
             then:
               - cover.stop: cover_ladder1
             else:
@@ -281,8 +282,8 @@ binary_sensor:
         - if:
             condition:
               or:
-                - cover.is_opening: cover_ladder2
-                - cover.is_closing: cover_ladder2
+                - switch.is_on: relay3
+                - switch.is_on: relay4
             then:
               - cover.stop: cover_ladder2
             else:
@@ -299,17 +300,14 @@ binary_sensor:
         - if:
             condition:
               or:
-                - cover.is_opening: cover_ladder2
-                - cover.is_closing: cover_ladder2
+                - switch.is_on: relay3
+                - switch.is_on: relay4
             then:
               - cover.stop: cover_ladder2
             else:
               - cover.close: cover_ladder2
 
-#############################
 #  OPTIONAL SERVICE BUTTONS
-#############################
-
 button:
   - platform: restart
     name: "Device Restart"
